@@ -5,13 +5,15 @@
 class UnitTemplate(object):
     """ A template of a single type of unit.
     """
-    def __init__(self, name, max_pop, max_stamina, stamina_regen, armor,
-                 weapons):
+    def __init__(self, name, max_pop, max_stamina, stamina_regen, armor, max_morale, weapons):
         """ Initializes a new UnitTemplate.
         """
         self.name = name
         self.max_pop = max_pop
+        self.max_stamina = max_stamina
+        self.stamina_regen = stamina_regen
         self.armor = armor
+        self.max_morale = max_morale
         self.weapons = weapons
         if not isinstance(self.weapons, list):
             self.weapons = [self.weapons]

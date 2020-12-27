@@ -13,8 +13,10 @@ def simple_unit_fight_test(attacker_template, defender_template):
         link.battle()
     if link.winner and link.loser:
         print("\nWinner: {0.template.name}\tLoser ({3}): {1.template.name}\tNum Rounds: {2}\n".format(link.winner, link.loser, link.round, "Dead" if not link.loser.alive else "Fleeing" if link.loser.fleeing else ""))
-        attacker.print_status()
-        defender.print_status()
+    else:
+        print("\nRESULT WAS A TIE\n")
+    attacker.print_status()
+    defender.print_status()
 
 
 if __name__ == "__main__":

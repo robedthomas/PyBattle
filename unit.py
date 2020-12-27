@@ -8,6 +8,7 @@ class Unit(object):
     """
     KILLING_POWER_RATIO = 0.10
     ARMOR_DESTRUCTION_RATIO = 0.20
+    STAMINA_ATTACK_REDUCTION_RATIO = 0.50
 
     def __init__(self, template, pop=None, morale=None, stamina=None, rank=0, exp=0, cohesion=1):
         """ Initializes a new Unit.
@@ -186,6 +187,7 @@ class Unit(object):
         atk_pow = attacker.template.weapons[attack_weapon_index].attack
         if charging:
             atk_pow += attacker.template.weapons[attack_weapon_index].charge
+        atk_pow *= 1 - ((1 - (attacker.stamina / attacker.template.max_stamina)) * Unit.STAMINA_ATTACK_REDUCTION_RATIO)
         return atk_pow
 
     @staticmethod

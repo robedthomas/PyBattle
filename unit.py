@@ -238,7 +238,7 @@ class Unit(object):
     
     @staticmethod
     def morale_loss_from_combat(unit, friendly_losses, enemy_losses):
-        return (friendly_losses / enemy_losses) * Unit.MORALE_LOSS_FROM_COMBAT_FACTOR
+        return ((friendly_losses / enemy_losses) + (1 - (unit.pop / unit.template.max_pop))) * Unit.MORALE_LOSS_FROM_COMBAT_FACTOR
     
     @staticmethod
     def morale_loss_from_stamina(unit):

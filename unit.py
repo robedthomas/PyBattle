@@ -38,7 +38,7 @@ class Unit(object):
         elif val < 0:
             self._pop = 0
         else:
-            self._pop = val
+            self._pop = int(val)
 
     @property
     def morale(self):

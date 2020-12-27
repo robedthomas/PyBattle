@@ -10,8 +10,8 @@ def simple_unit_fight_test(attacker_template, defender_template):
         attacker.print_status()
         defender.print_status()
         link.battle()
-    if link.winner:
-        print("Winner: {0.template.name}\tLoser: {1.template.name}\tNum Rounds: {2}".format(link.winner, link.loser, link.round))
+    if link.winner and link.loser:
+        print("Winner: {0.template.name}\tLoser ({3}): {1.template.name}\tNum Rounds: {2}".format(link.winner, link.loser, link.round, "Dead" if not link.loser.alive else "Fleeing" if link.loser.fleeing else ""))
 
 
 if __name__ == "__main__":

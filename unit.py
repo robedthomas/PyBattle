@@ -7,6 +7,7 @@ class Unit(object):
     """ A single unit of soldiers.
     """
     KILLING_POWER_RATIO = 0.10
+    ARMOR_DESTRUCTION_RATIO = 0.20
 
     def __init__(self, template, pop=None, morale=None, stamina=None, rank=0, exp=0, cohesion=1):
         """ Initializes a new Unit.
@@ -103,20 +104,20 @@ class Unit(object):
         enemy.pop -= attacker_killing_power
         self.stamina -= self.template.weapons[attack_weapon_index].fighting_stamina_usage
         enemy.stamina -= enemy.template.weapons[defend_weapon_index].fighting_stamina_usage
-        attacker_piercing = self.template.weapons[attack_weapon_index].piercing
-        defender_piercing = enemy.template.weapons[defend_weapon_index].piercing
+        attacker_armor_damage = self.template.weapons[attack_weapon_index].piercing * Unit.ARMOR_DESTRUCTION_RATIO
+        defender_armor_damage = enemy.template.weapons[defend_weapon_index].piercing * Unit.ARMOR_DESTRUCTION_RATIO
         if direction is RelativeDirection.front and self.template.weapons[attack_weapon_index].has_shield:
             initial_shield = self.shield
-            self.shield -= defender_piercing
-            defender_piercing -= initial_shield
-        if defender_piercing > 0:
-            self.armor -= defender_piercing
+            self.shield -= defender_armor_damage
+            defender_armor_damage -= initial_shield
+        if defender_armor_damage > 0:
+            self.armor -= defender_armor_damage
         if direction is RelativeDirection.front and enemy.template.weapons[defend_weapon_index].has_shield:
             initial_shield = enemy.shield
-            enemy.shield -= attacker_piercing
-            attacker_piercing -= initial_shield
-        if attacker_piercing > 0:
-            enemy.armor -= attacker_piercing
+            enemy.shield -= attacker_armor_damage
+            attacker_armor_damage -= initial_shield 
+        if attacker_armor_damage > 0:
+            enemy.armor -= attacker_armor_damage
         if self.pop <= 0:
             self.die()
         if enemy.pop <= 0:

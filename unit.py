@@ -9,6 +9,8 @@ class Unit(object):
     KILLING_POWER_RATIO = 0.10
     ARMOR_DESTRUCTION_RATIO = 0.25
     MAX_STAMINA_ATTACK_REDUCTION_RATIO = 0.50
+    MORALE_LOSS_FROM_COMBAT_FACTOR = 5
+    MORALE_LOSS_FROM_STAMINA_FACTOR = 5
 
     def __init__(self, template, pop=None, morale=None, stamina=None, rank=0, exp=0, cohesion=1):
         """ Initializes a new Unit.
@@ -23,6 +25,7 @@ class Unit(object):
         self.exp = exp
         self.cohesion = cohesion
         self.alive = True
+        self.fleeing = False
 
     @property
     def pop(self):
@@ -99,14 +102,13 @@ class Unit(object):
                      Front by default
         charging -- True if this unit is charging the enemy unit
         """
+        # Calculate killing power
         attacker_killing_power = Unit.killing_power(self, enemy, charging=charging, attack_weapon_index=attack_weapon_index, defend_weapon_index=defend_weapon_index)
         defender_killing_power = Unit.killing_power(enemy, self, charging=False)
+        # Deal health damage
         self.pop -= defender_killing_power
         enemy.pop -= attacker_killing_power
-        self.stamina -= self.template.weapons[attack_weapon_index].fighting_stamina_usage
-        enemy.stamina -= enemy.template.weapons[defend_weapon_index].fighting_stamina_usage
-        self.stamina += self.template.stamina_regen
-        enemy.stamina += enemy.template.stamina_regen
+        # Deal armor damage
         attacker_armor_damage = self.template.weapons[attack_weapon_index].piercing * Unit.ARMOR_DESTRUCTION_RATIO * (1 - Unit.stamina_attack_reduction_ratio(self))
         defender_armor_damage = enemy.template.weapons[defend_weapon_index].piercing * Unit.ARMOR_DESTRUCTION_RATIO * (1 - Unit.stamina_attack_reduction_ratio(enemy))
         if direction is RelativeDirection.front and self.template.weapons[attack_weapon_index].has_shield:
@@ -121,10 +123,25 @@ class Unit(object):
             attacker_armor_damage -= initial_shield 
         if attacker_armor_damage > 0:
             enemy.armor -= attacker_armor_damage
+        # Stamina loss and gain
+        self.stamina -= self.template.weapons[attack_weapon_index].fighting_stamina_usage
+        enemy.stamina -= enemy.template.weapons[defend_weapon_index].fighting_stamina_usage
+        self.stamina += self.template.stamina_regen
+        enemy.stamina += enemy.template.stamina_regen
+        # Morale loss and gain
+        self.morale -= Unit.morale_loss_from_combat(self, defender_killing_power, attacker_killing_power)
+        self.morale -= Unit.morale_loss_from_stamina(self)
+        enemy.morale -= Unit.morale_loss_from_combat(enemy, attacker_killing_power, defender_killing_power)
+        enemy.morale -= Unit.morale_loss_from_stamina(enemy)
+        # Check for unit death or fleeing
         if self.pop <= 0:
             self.die()
+        elif self.morale <= 0:
+            self.flee()
         if enemy.pop <= 0:
             enemy.die()
+        elif enemy.morale <= 0:
+            enemy.flee()
 
     def armor_defense(self, weapon_index=0, direction=RelativeDirection.front):
         """ Calculates the defense power of this unit from armor.
@@ -143,6 +160,9 @@ class Unit(object):
 
     def die(self):
         self.alive = False
+    
+    def flee(self):
+        self.fleeing = True
 
     def print_status(self):
         s = "{0.template.name} Status:\n\tHealth = {0.pop}/{0.template.max_pop}"
@@ -215,6 +235,14 @@ class Unit(object):
     @staticmethod
     def stamina_attack_reduction_ratio(attacker):
         return ((1 - (attacker.stamina / attacker.template.max_stamina)) * Unit.MAX_STAMINA_ATTACK_REDUCTION_RATIO)
+    
+    @staticmethod
+    def morale_loss_from_combat(unit, friendly_losses, enemy_losses):
+        return (friendly_losses / enemy_losses) * Unit.MORALE_LOSS_FROM_COMBAT_FACTOR
+    
+    @staticmethod
+    def morale_loss_from_stamina(unit):
+        return (1 - (unit.stamina / unit.template.max_stamina)) * Unit.MORALE_LOSS_FROM_STAMINA_FACTOR
 
 
 class BattleLink(object):
@@ -247,13 +275,13 @@ class BattleLink(object):
                             charging=self.charging)
         self.round += 1
         self.charging = False
-        if not self.attacker.alive:
+        if not self.attacker.alive or self.attacker.fleeing:
             self.active = False
-            if self.defender.alive:
+            if self.defender.alive and not self.defender.fleeing:
                 self.winner = self.defender
                 self.loser = self.attacker
-        if not self.defender.alive:
+        if not self.defender.alive or self.defender.fleeing:
             self.active = False
-            if self.attacker.alive:
+            if self.attacker.alive and not self.attacker.fleeing:
                 self.winner = self.attacker
                 self.loser = self.defender

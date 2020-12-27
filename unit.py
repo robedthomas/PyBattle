@@ -12,12 +12,80 @@ class Unit(object):
         """ Initializes a new Unit.
         """
         self.template = template
-        self.pop = template.max_pop if pop is None else pop
-        self.morale = template.max_morale if morale is None else morale
-        self.stamina = template.max_stamina if stamina is None else stamina
+        self._pop = template.max_pop if pop is None else pop
+        self._morale = template.max_morale if morale is None else morale
+        self._stamina = template.max_stamina if stamina is None else stamina
+        self._armor = template.armor
+        self._shield = template.shield
         self.rank = rank
         self.exp = exp
         self.cohesion = cohesion
+        self.alive = True
+
+    @property
+    def pop(self):
+        return self._pop
+
+    @pop.setter
+    def pop(self, val):
+        if val > self.template.max_pop:
+            self._pop = self.template.max_pop
+        elif val < 0:
+            self._pop = 0
+        else:
+            self._pop = val
+
+    @property
+    def morale(self):
+        return self._morale
+
+    @morale.setter
+    def morale(self, val):
+        if val > self.template.max_morale:
+            self._morale = self.template.max_morale
+        elif val < 0:
+            self._morale = 0
+        else:
+            self._morale = val
+
+    @property
+    def stamina(self):
+        return self._stamina
+
+    @stamina.setter
+    def stamina(self, val):
+        if val > self.template.max_stamina:
+            self._stamina = self.template.max_stamina
+        elif val < 0:
+            self._stamina = 0
+        else:
+            self._stamina = val
+
+    @property
+    def armor(self):
+        return self._armor
+    
+    @armor.setter
+    def armor(self, val):
+        if val > self.template.armor:
+            self._armor = self.template.armor
+        elif val < 0:
+            self._armor = 0
+        else:
+            self._armor = val
+    
+    @property
+    def shield(self):
+        return self._shield
+
+    @shield.setter
+    def shield(self, val):
+        if val > self.template.shield:
+            self._shield = self.template.shield
+        elif val < 0:
+            self._shield = 0
+        else:
+            self._shield = val
 
     def fight(self, enemy, attack_weapon_index=0, defend_weapon_index=0, direction=RelativeDirection.front, charging=False):
         """ Triggers a round of battle between this unit and an enemy unit.
@@ -29,12 +97,30 @@ class Unit(object):
                      Front by default
         charging -- True if this unit is charging the enemy unit
         """
-        attacker_killing_power = killing_power(self, enemy, charging=charging, attack_weapon_index=attack_weapon_index, defend_weapon_index=defend_weapon_index)
-        defender_killing_power = killing_power(enemy, self, charging=False)
+        attacker_killing_power = Unit.killing_power(self, enemy, charging=charging, attack_weapon_index=attack_weapon_index, defend_weapon_index=defend_weapon_index)
+        defender_killing_power = Unit.killing_power(enemy, self, charging=False)
         self.pop -= defender_killing_power
         enemy.pop -= attacker_killing_power
         self.stamina -= self.template.weapons[attack_weapon_index].fighting_stamina_usage
         enemy.stamina -= enemy.template.weapons[defend_weapon_index].fighting_stamina_usage
+        attacker_piercing = self.template.weapons[attack_weapon_index].piercing
+        defender_piercing = enemy.template.weapons[defend_weapon_index].piercing
+        if direction is RelativeDirection.front and self.template.weapons[attack_weapon_index].has_shield:
+            initial_shield = self.shield
+            self.shield -= defender_piercing
+            defender_piercing -= initial_shield
+        if defender_piercing > 0:
+            self.armor -= defender_piercing
+        if direction is RelativeDirection.front and enemy.template.weapons[defend_weapon_index].has_shield:
+            initial_shield = enemy.shield
+            enemy.shield -= attacker_piercing
+            attacker_piercing -= initial_shield
+        if attacker_piercing > 0:
+            enemy.armor -= attacker_piercing
+        if self.pop <= 0:
+            self.die()
+        if enemy.pop <= 0:
+            enemy.die()
 
     def armor_defense(self, weapon_index=0, direction=RelativeDirection.front):
         """ Calculates the defense power of this unit from armor.
@@ -46,10 +132,21 @@ class Unit(object):
             The defense power this unit gains from its armor (and possibly
             shield).
         """
-        armor_def = self.template.armor
-        if direction is Direction.front:
-            armor_def += self.template.weapons[weapon_index].shield
+        armor_def = self.armor
+        if direction is RelativeDirection.front and self.template.weapons[weapon_index].has_shield:
+            armor_def += self.shield
         return armor_def
+
+    def die(self):
+        self.alive = False
+
+    def print_status(self):
+        s = "{0.template.name} Status:\n\tHealth = {0.pop}/{0.template.max_pop}"
+        s += "\n\tMorale = {0.morale}/{0.template.max_morale}"
+        s += "\n\tStamina = {0.stamina}/{0.template.max_stamina}"
+        s += "\n\tArmor = {0.armor}/{0.template.armor}"
+        s += "\n\tShield = {0.shield}/{0.template.shield}"
+        print(s.format(self))
 
     @staticmethod
     def killing_power(attacker, defender, attack_weapon_index=0, defend_weapon_index=0, charging=False):
@@ -70,7 +167,7 @@ class Unit(object):
         """
         return Unit.attack_power(attacker, defender, attack_weapon_index=0, defend_weapon_index=0, charging=charging)\
             / Unit.defense_power(defender, attacker, attack_weapon_index=0, defend_weapon_index=0)\
-            * defender.template.max_pop * KILLING_POWER_RATIO
+            * defender.template.max_pop * Unit.KILLING_POWER_RATIO
 
     @staticmethod
     def attack_power(attacker, defender, attack_weapon_index=0, defend_weapon_index=0, charging=False):
@@ -130,6 +227,9 @@ class BattleLink(object):
         self.direction = direction
         self.charging = charging
         self.round = 0
+        self.active = True
+        self.winner = None
+        self.loser = None
 
     def battle(self):
         """ Triggers a round of battle between the attacker and defender.
@@ -138,3 +238,13 @@ class BattleLink(object):
                             charging=self.charging)
         self.round += 1
         self.charging = False
+        if not self.attacker.alive:
+            self.active = False
+            if self.defender.alive:
+                self.winner = self.defender
+                self.loser = self.attacker
+        if not self.defender.alive:
+            self.active = False
+            if self.attacker.alive:
+                self.winner = self.attacker
+                self.loser = self.defender

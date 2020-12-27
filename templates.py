@@ -16,3 +16,9 @@ _greatshieldmen_sword_and_greatshield = WeaponSet('Sword and Great-Shield', 6,
                                                   6, True, 3, 6, 6, 7, 3.5)
 great_shield_men = UnitTemplate('Great-Shield Men', 120, 100, 4.5, 4, 12, 140,
                                 [_greatshieldmen_sword_and_greatshield])
+
+_scavn_swordsmen_sword_and_shield = WeaponSet('Sword and Shield', 11, 7, True, 3, 8, 2, 10, 3)
+scavn_swordsmen = UnitTemplate('Scavn Swordsmen', 120, 100, 5, 4, 4, 80, [_scavn_swordsmen_sword_and_shield])
+
+_rendmen_axe_and_shield = WeaponSet('Axe and Shield', 16, 6, True, 6, 12, 1, 14, 2)
+rendmen = UnitTemplate('Rendmen', 120, 100, 6, 2, 2, 60, [_rendmen_axe_and_shield])

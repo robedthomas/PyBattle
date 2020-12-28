@@ -1,5 +1,6 @@
 """ Contains the Unit class.
 """
+import math
 from direction import Direction, RelativeDirection
 
 
@@ -92,56 +93,68 @@ class Unit(object):
         else:
             self._shield = val
 
-    def fight(self, enemy, attack_weapon_index=0, defend_weapon_index=0, direction=RelativeDirection.front, charging=False):
-        """ Triggers a round of battle between this unit and an enemy unit.
-            This unit is the attacker.
+    @staticmethod
+    def fight(attacker, defender, attack_weapon_index=0, defend_weapon_index=0, direction=RelativeDirection.front, charging=False):
+        """ Triggers a round of battle between two units.
 
         Positional arguments:
-        enemy -- the Unit to fight against
-        direction -- the relative direction from this unit to the enemy.
+        attacker -- the attacking Unit
+        defender -- the defending Unit
+        direction -- the relative direction from the attacker to the defender.
                      Front by default
-        charging -- True if this unit is charging the enemy unit
+        charging -- True if the attacker is charging the defender
         """
         # Calculate killing power
-        attacker_killing_power = Unit.killing_power(self, enemy, charging=charging, attack_weapon_index=attack_weapon_index, defend_weapon_index=defend_weapon_index)
-        defender_killing_power = Unit.killing_power(enemy, self, charging=False)
+        attacker_killing_power = Unit.killing_power(attacker, defender, charging=charging, attack_weapon_index=attack_weapon_index, defend_weapon_index=defend_weapon_index)
+        defender_killing_power = Unit.killing_power(defender, attacker, charging=False)
         # Deal health damage
-        self.pop -= defender_killing_power
-        enemy.pop -= attacker_killing_power
+        attacker.pop -= defender_killing_power
+        defender.pop -= attacker_killing_power
         # Deal armor damage
-        attacker_armor_damage = self.template.weapons[attack_weapon_index].piercing * Unit.ARMOR_DESTRUCTION_RATIO * (1 - Unit.stamina_attack_reduction_ratio(self))
-        defender_armor_damage = enemy.template.weapons[defend_weapon_index].piercing * Unit.ARMOR_DESTRUCTION_RATIO * (1 - Unit.stamina_attack_reduction_ratio(enemy))
-        if direction is RelativeDirection.front and self.template.weapons[attack_weapon_index].has_shield:
-            initial_shield = self.shield
-            self.shield -= defender_armor_damage
-            defender_armor_damage -= initial_shield
+        attacker_armor_damage = attacker.template.weapons[attack_weapon_index].piercing * Unit.ARMOR_DESTRUCTION_RATIO * (1 - Unit.stamina_attack_reduction_ratio(attacker))
+        defender_armor_damage = defender.template.weapons[defend_weapon_index].piercing * Unit.ARMOR_DESTRUCTION_RATIO * (1 - Unit.stamina_attack_reduction_ratio(defender))
+        attacker_shield_damage = 0
+        defender_shield_damage = 0
+        if direction is RelativeDirection.front and attacker.template.weapons[attack_weapon_index].has_shield:
+            defender_shield_damage = attacker.shield if attacker.shield < defender_armor_damage else defender_armor_damage
+            attacker.shield -= defender_shield_damage
+            defender_armor_damage -= defender_shield_damage
         if defender_armor_damage > 0:
-            self.armor -= defender_armor_damage
-        if direction is RelativeDirection.front and enemy.template.weapons[defend_weapon_index].has_shield:
-            initial_shield = enemy.shield
-            enemy.shield -= attacker_armor_damage
-            attacker_armor_damage -= initial_shield 
+            attacker.armor -= defender_armor_damage
+        if direction is RelativeDirection.front and defender.template.weapons[defend_weapon_index].has_shield:
+            attacker_shield_damage = defender.shield if defender.shield < attacker_armor_damage else attacker_armor_damage
+            defender.shield -= attacker_shield_damage
+            attacker_armor_damage -= attacker_shield_damage 
         if attacker_armor_damage > 0:
-            enemy.armor -= attacker_armor_damage
+            defender.armor -= attacker_armor_damage
         # Stamina loss and gain
-        self.stamina -= self.template.weapons[attack_weapon_index].fighting_stamina_usage
-        enemy.stamina -= enemy.template.weapons[defend_weapon_index].fighting_stamina_usage
-        self.stamina += self.template.stamina_regen
-        enemy.stamina += enemy.template.stamina_regen
+        attacker_stamina_loss = attacker.template.weapons[attack_weapon_index].fighting_stamina_usage - attacker.template.stamina_regen
+        attacker.stamina -= attacker_stamina_loss
+        defender_stamina_loss = defender.template.weapons[defend_weapon_index].fighting_stamina_usage - defender.template.stamina_regen
+        defender.stamina -= defender_stamina_loss
         # Morale loss and gain
-        self.morale -= Unit.morale_loss_from_combat(self, defender_killing_power, attacker_killing_power)
-        self.morale -= Unit.morale_loss_from_stamina(self)
-        enemy.morale -= Unit.morale_loss_from_combat(enemy, attacker_killing_power, defender_killing_power)
-        enemy.morale -= Unit.morale_loss_from_stamina(enemy)
+        attacker_morale_loss = Unit.morale_loss_from_combat(attacker, defender_killing_power, attacker_killing_power) + Unit.morale_loss_from_stamina(attacker)
+        attacker.morale -= attacker_morale_loss
+        defender_morale_loss = Unit.morale_loss_from_combat(defender, attacker_killing_power, defender_killing_power) + Unit.morale_loss_from_stamina(defender)
+        defender.morale -= defender_morale_loss
         # Check for unit death or fleeing
-        if self.pop <= 0:
-            self.die()
-        elif self.morale <= 0:
-            self.flee()
-        if enemy.pop <= 0:
-            enemy.die()
-        elif enemy.morale <= 0:
-            enemy.flee()
+        if attacker.pop <= 0:
+            attacker.die()
+        elif attacker.morale <= 0:
+            attacker.flee()
+        if defender.pop <= 0:
+            defender.die()
+        elif defender.morale <= 0:
+            defender.flee()
+        # Create and return combat report
+        attacker_report = UnitCombatReport(attacker, attack_weapon_index, math.ceil(defender_killing_power), attacker_morale_loss,
+                                           attacker_stamina_loss, defender_shield_damage, defender_armor_damage,
+                                           died=not attacker.alive, fled=attacker.fleeing, direction=direction, charged=charging)
+        defender_report = UnitCombatReport(defender, defend_weapon_index, math.ceil(attacker_killing_power), defender_morale_loss,
+                                           defender_stamina_loss, attacker_shield_damage, attacker_armor_damage,
+                                           died=not defender.alive, fled=defender.fleeing, direction=direction, charged=False)
+        combat_report = CombatReport(attacker, defender, attacker_report, defender_report)
+        return combat_report
 
     def armor_defense(self, weapon_index=0, direction=RelativeDirection.front):
         """ Calculates the defense power of this unit from armor.
@@ -264,6 +277,7 @@ class BattleLink(object):
         self.direction = direction
         self.charging = charging
         self.round = 0
+        self.reports = []
         self.active = True
         self.winner = None
         self.loser = None
@@ -271,8 +285,7 @@ class BattleLink(object):
     def battle(self):
         """ Triggers a round of battle between the attacker and defender.
         """
-        self.attacker.fight(self.defender, direction=self.direction,
-                            charging=self.charging)
+        self.reports.append(Unit.fight(self.attacker, self.defender, direction=self.direction, charging=self.charging))
         self.round += 1
         self.charging = False
         if not self.attacker.alive or self.attacker.fleeing:
@@ -285,3 +298,59 @@ class BattleLink(object):
             if self.attacker.alive and not self.attacker.fleeing:
                 self.winner = self.attacker
                 self.loser = self.defender
+
+    def __str__(self):
+        s = "BATTLE LINK REPORT - {0.attacker.template.name} vs {0.defender.template.name} - {0.round} ROUNDS"
+        for i in range(len(self.reports)):
+            s += "\n\nRound " + str(i)
+            s += "\n" + str(self.reports[i])
+        if self.winner and self.loser:
+            s += "\n\nWinner: {0.winner.template.name}\tLoser ({1}): {0.loser.template.name}\tNum Rounds: {0.round}\n".format(self, "Dead" if not self.loser.alive else "Fleeing" if self.loser.fleeing else "")
+        else:
+            s+= "\n\nRESULT WAS A TIE\n"
+        return s.format(self)
+
+
+class CombatReport(object):
+    """ A record of a single round of combat between two units.
+    """
+    def __init__(self, attacker, defender, attacker_report, defender_report):
+        self.attacker = attacker
+        self.defender = defender
+        self.attacker_report = attacker_report
+        self.defender_report = defender_report
+    
+    def __str__(self):
+        return str(self.attacker_report) + "\n" + str(self.defender_report)
+
+
+class UnitCombatReport(object):
+    """ A record of a single round of combat for a one unit.
+    """
+    def __init__(self, unit, weapon_index, health_loss, morale_loss, stamina_loss, shield_loss, armor_loss,
+                 died=False, fled=False, direction=RelativeDirection.front, charged=False):
+        self.unit = unit
+        self.weapon_index = weapon_index
+        self.health = unit.pop
+        self.health_loss = health_loss
+        self.morale = unit.morale
+        self.morale_loss = morale_loss
+        self.stamina = unit.stamina
+        self.stamina_loss = stamina_loss
+        self.shield = unit.shield
+        self.shield_loss = shield_loss
+        self.armor = unit.armor
+        self.armor_loss = armor_loss
+        self.died = died
+        self.fled = fled
+        self.direction = direction
+        self.charged = charged
+    
+    def __str__(self):
+        s = "{0.unit.template.name} Status:"
+        s += "\n\tHealth = {0.health}/{0.unit.template.max_pop} (-{0.health_loss})"
+        s += "\n\tMorale = {0.morale}/{0.unit.template.max_morale} (-{0.morale_loss})"
+        s += "\n\tStamina = {0.stamina}/{0.unit.template.max_stamina} (-{0.stamina_loss})"
+        s += "\n\tArmor = {0.armor}/{0.unit.template.armor} (-{0.armor_loss})"
+        s += "\n\tShield = {0.shield}/{0.unit.template.shield} (-{0.shield_loss})"
+        return s.format(self)

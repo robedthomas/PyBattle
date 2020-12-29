@@ -38,3 +38,25 @@ class WeaponSet(object):
         self.discipline = discipline
         self.fighting_stamina_usage = fighting_stamina_usage
         self.moving_stamina_usage = moving_stamina_usage
+
+
+class MeleeWeaponSet(WeaponSet):
+    """ A melee WeaponSet.
+    """
+    pass
+
+
+class RangedWeaponSet(WeaponSet):
+    """ A ranged WeaponSet.
+    """
+    def __init__(self, name, attack, defense, has_shield, piercing, charge,
+                 discipline, fighting_stamina_usage, moving_stamina_usage,
+                 ranged_attack, range, ammunition, ranged_piercing, ranged_fighting_stamina_usage,
+                 display_name=None):
+        super().__init__(name, attack, defense, has_shield, piercing, charge,
+                         discipline, fighting_stamina_usage, moving_stamina_usage, display_name=display_name)
+        self.ranged_attack = ranged_attack
+        self.range = range
+        self.ammunition = ammunition
+        self.ranged_piercing = ranged_piercing
+        self.ranged_fighting_stamina_usage = ranged_fighting_stamina_usage

@@ -11,6 +11,7 @@ class Unit(object):
     ARMOR_DESTRUCTION_RATIO = 0.25
     MAX_STAMINA_ATTACK_REDUCTION_RATIO = 0.50
     MORALE_LOSS_FROM_COMBAT_FACTOR = 5
+    MORALE_LOSS_FROM_RANGED_COMBAT_FACTOR = 50
     MORALE_LOSS_FROM_STAMINA_FACTOR = 5
 
     def __init__(self, template, pop=None, morale=None, stamina=None, rank=0, exp=0, cohesion=1):
@@ -106,7 +107,7 @@ class Unit(object):
         """
         # Calculate killing power
         attacker_killing_power = Unit.killing_power(attacker, defender, charging=charging, attack_weapon_index=attack_weapon_index, defend_weapon_index=defend_weapon_index)
-        defender_killing_power = Unit.killing_power(defender, attacker, charging=False)
+        defender_killing_power = Unit.killing_power(defender, attacker, charging=False, attack_weapon_index=attack_weapon_index, defend_weapon_index=defend_weapon_index)
         # Deal health damage
         attacker.pop -= defender_killing_power
         defender.pop -= attacker_killing_power
@@ -156,6 +157,52 @@ class Unit(object):
         combat_report = CombatReport(attacker, defender, attacker_report, defender_report)
         return combat_report
 
+    @staticmethod
+    def ranged_fight(attacker, defender, attack_weapon_index=0, defend_weapon_index=0, direction=RelativeDirection.front):
+        """ Triggers a round of ranged battle between two units.
+
+        Positional arguments:
+        attacker -- the attacking Unit
+        defender -- the defending Unit
+        direction -- the relative direction from the attacker to the defender.
+                     Front by default
+        """
+        # Calculate killing power
+        attacker_killing_power = Unit.ranged_killing_power(attacker, defender, attack_weapon_index=attack_weapon_index, defend_weapon_index=defend_weapon_index)
+        # Deal health damage
+        defender.pop -= attacker_killing_power
+        # Deal armor damage
+        attacker_armor_damage = attacker.template.weapons[attack_weapon_index].ranged_piercing * Unit.ARMOR_DESTRUCTION_RATIO * (1 - Unit.stamina_attack_reduction_ratio(attacker))
+        attacker_shield_damage = defender.shield if defender.shield < attacker_armor_damage else attacker_armor_damage
+        defender.shield -= attacker_shield_damage
+        attacker_armor_damage -= attacker_shield_damage 
+        if attacker_armor_damage > 0:
+            defender.armor -= attacker_armor_damage
+        # Stamina loss and gain
+        attacker_stamina_loss = attacker.template.weapons[attack_weapon_index].ranged_fighting_stamina_usage - attacker.template.stamina_regen
+        attacker.stamina -= attacker_stamina_loss
+        # Morale loss and gain
+        attacker_morale_loss = Unit.morale_loss_from_stamina(attacker)
+        attacker.morale -= attacker_morale_loss
+        defender_morale_loss = Unit.morale_loss_from_ranged_combat(defender, attacker_killing_power) + Unit.morale_loss_from_stamina(defender)
+        defender.morale -= defender_morale_loss
+        # Check for unit death or fleeing
+        if attacker.morale <= 0:
+            attacker.flee()
+        if defender.pop <= 0:
+            defender.die()
+        elif defender.morale <= 0:
+            defender.flee()
+        # Create and return combat report
+        attacker_report = UnitCombatReport(attacker, attack_weapon_index, 0, attacker_morale_loss,
+                                           attacker_stamina_loss, 0, 0,
+                                           died=False, fled=attacker.fleeing, direction=direction, charged=False)
+        defender_report = UnitCombatReport(defender, defend_weapon_index, math.ceil(attacker_killing_power), defender_morale_loss,
+                                           0, attacker_shield_damage, attacker_armor_damage,
+                                           died=not defender.alive, fled=defender.fleeing, direction=direction, charged=False)
+        combat_report = CombatReport(attacker, defender, attacker_report, defender_report)
+        return combat_report
+
     def armor_defense(self, weapon_index=0, direction=RelativeDirection.front):
         """ Calculates the defense power of this unit from armor.
 
@@ -169,6 +216,19 @@ class Unit(object):
         armor_def = self.armor
         if direction is RelativeDirection.front and self.template.weapons[weapon_index].has_shield:
             armor_def += self.shield
+        return armor_def
+    
+    def ranged_armor_defense(self, weapon_index=0, direction=RelativeDirection.front):
+        """ Calculates the ranged defense power of this unit from armor.
+
+            Positional arguments:
+            direction -- the direction this unit is being attacked from
+
+            Return:
+            The defense power this unit gains from its armor (and possibly
+            shield).
+        """
+        armor_def = self.armor + (self.shield * 3)
         return armor_def
 
     def die(self):
@@ -202,8 +262,14 @@ class Unit(object):
             The average number of pops in the defender unit that will be killed
             per fronted pop in the attacker unit.
         """
-        return Unit.attack_power(attacker, defender, attack_weapon_index=0, defend_weapon_index=0, charging=charging)\
-            / Unit.defense_power(defender, attacker, attack_weapon_index=0, defend_weapon_index=0)\
+        return Unit.attack_power(attacker, defender, attack_weapon_index=attack_weapon_index, defend_weapon_index=attack_weapon_index, charging=charging)\
+            / Unit.defense_power(defender, attacker, attack_weapon_index=attack_weapon_index, defend_weapon_index=attack_weapon_index)\
+            * defender.template.max_pop * Unit.KILLING_POWER_RATIO
+        
+    @staticmethod
+    def ranged_killing_power(attacker, defender, attack_weapon_index=0, defend_weapon_index=0):
+        return Unit.ranged_attack_power(attacker, defender, attack_weapon_index=attack_weapon_index, defend_weapon_index=defend_weapon_index)\
+            / Unit.ranged_defense_power(defender, attacker, attack_weapon_index=attack_weapon_index, defend_weapon_index=defend_weapon_index)\
             * defender.template.max_pop * Unit.KILLING_POWER_RATIO
 
     @staticmethod
@@ -222,6 +288,23 @@ class Unit(object):
         atk_pow = attacker.template.weapons[attack_weapon_index].attack
         if charging:
             atk_pow += attacker.template.weapons[attack_weapon_index].charge
+        atk_pow *= 1 - Unit.stamina_attack_reduction_ratio(attacker)
+        return atk_pow
+    
+    @staticmethod
+    def ranged_attack_power(attacker, defender, attack_weapon_index=0, defend_weapon_index=0):
+        """ Calculates the ranged attack power of the attacker unit against the
+            defender unit.
+
+            Positional arguments:
+            attacker -- the 'attacking' unit whose ranged attack power will be found
+            defender -- the 'defending' unit
+
+
+            Return:
+            The ranged attack power of the attacker versus the defender.
+        """
+        atk_pow = attacker.template.weapons[attack_weapon_index].ranged_attack
         atk_pow *= 1 - Unit.stamina_attack_reduction_ratio(attacker)
         return atk_pow
 
@@ -246,12 +329,35 @@ class Unit(object):
         return def_pow
     
     @staticmethod
+    def ranged_defense_power(defender, attacker, attack_weapon_index=0, defend_weapon_index=0, direction=RelativeDirection.front):
+        """ Calculates the ranged defense power of the defender unit against the
+            attacker unit.
+
+            Positional arguments:
+            defender -- the 'defending' unit whose defense power will be found
+            attacker -- the 'attacking' unit
+
+            Return:
+            The ranged defense power of the defender versus the attacker.
+        """
+        def_pow = defender.template.weapons[defend_weapon_index].defense / 2
+        armor_val = defender.ranged_armor_defense()
+        armor_val -= attacker.template.weapons[attack_weapon_index].ranged_piercing
+        armor_val = 0 if armor_val < 0 else armor_val
+        def_pow += armor_val
+        return def_pow
+    
+    @staticmethod
     def stamina_attack_reduction_ratio(attacker):
         return ((1 - (attacker.stamina / attacker.template.max_stamina)) * Unit.MAX_STAMINA_ATTACK_REDUCTION_RATIO)
     
     @staticmethod
     def morale_loss_from_combat(unit, friendly_losses, enemy_losses):
         return ((friendly_losses / enemy_losses) + (1 - (unit.pop / unit.template.max_pop))) * Unit.MORALE_LOSS_FROM_COMBAT_FACTOR
+    
+    @staticmethod
+    def morale_loss_from_ranged_combat(unit, friendly_losses):
+        return (friendly_losses / unit.template.max_pop) * Unit.MORALE_LOSS_FROM_RANGED_COMBAT_FACTOR
     
     @staticmethod
     def morale_loss_from_stamina(unit):
@@ -309,6 +415,30 @@ class BattleLink(object):
         else:
             s+= "\n\nRESULT WAS A TIE\n"
         return s.format(self)
+
+
+class RangedBattleLink(BattleLink):
+    """ A link between a ranged attacking unit and a defending unit.
+    """
+    def __init__(self, attacker, defender, direction=RelativeDirection.front):
+        super().__init__(attacker, defender, direction=direction, charging=False)
+    
+    def battle(self):
+        """ Triggers a round of battle between the attacker and defender.
+        """
+        self.reports.append(Unit.ranged_fight(self.attacker, self.defender, direction=self.direction))
+        self.round += 1
+        self.charging = False
+        if not self.attacker.alive or self.attacker.fleeing:
+            self.active = False
+            if self.defender.alive and not self.defender.fleeing:
+                self.winner = self.defender
+                self.loser = self.attacker
+        if not self.defender.alive or self.defender.fleeing:
+            self.active = False
+            if self.attacker.alive and not self.attacker.fleeing:
+                self.winner = self.attacker
+                self.loser = self.defender
 
 
 class CombatReport(object):

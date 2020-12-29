@@ -7,7 +7,7 @@ from direction import Direction, RelativeDirection
 class Unit(object):
     """ A single unit of soldiers.
     """
-    KILLING_POWER_RATIO = 0.10
+    KILLING_POWER_RATIO = 8
     ARMOR_DESTRUCTION_RATIO = 0.25
     MAX_STAMINA_ATTACK_REDUCTION_RATIO = 0.50
     MORALE_LOSS_FROM_COMBAT_FACTOR = 5
@@ -264,13 +264,13 @@ class Unit(object):
         """
         return Unit.attack_power(attacker, defender, attack_weapon_index=attack_weapon_index, defend_weapon_index=attack_weapon_index, charging=charging)\
             / Unit.defense_power(defender, attacker, attack_weapon_index=attack_weapon_index, defend_weapon_index=attack_weapon_index)\
-            * defender.template.max_pop * Unit.KILLING_POWER_RATIO
+            * Unit.KILLING_POWER_RATIO
         
     @staticmethod
     def ranged_killing_power(attacker, defender, attack_weapon_index=0, defend_weapon_index=0):
         return Unit.ranged_attack_power(attacker, defender, attack_weapon_index=attack_weapon_index, defend_weapon_index=defend_weapon_index)\
             / Unit.ranged_defense_power(defender, attacker, attack_weapon_index=attack_weapon_index, defend_weapon_index=defend_weapon_index)\
-            * defender.template.max_pop * Unit.KILLING_POWER_RATIO
+            * Unit.KILLING_POWER_RATIO
 
     @staticmethod
     def attack_power(attacker, defender, attack_weapon_index=0, defend_weapon_index=0, charging=False):

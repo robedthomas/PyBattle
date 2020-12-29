@@ -21,5 +21,6 @@ def simple_unit_ranged_fight_test(attacker_template, defender_template):
 
 
 if __name__ == "__main__":
-    simple_unit_ranged_fight_test(freewood_archers, scavn_swordsmen)
+    simple_unit_fight_test(rendmen, scavn_swordsmen)
+    # simple_unit_ranged_fight_test(freewood_archers, scavn_swordsmen)
     

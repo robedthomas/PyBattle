@@ -10,6 +10,7 @@ class Unit(object):
     KILLING_POWER_RATIO = 8
     ARMOR_DESTRUCTION_RATIO = 0.25
     MAX_STAMINA_ATTACK_REDUCTION_RATIO = 0.50
+    MAX_MORALE_ATTACK_REDUCTION_RATIO = 0.40
     MORALE_LOSS_FROM_COMBAT_FACTOR = 5
     MORALE_LOSS_FROM_RANGED_COMBAT_FACTOR = 50
     MORALE_LOSS_FROM_STAMINA_FACTOR = 5
@@ -288,7 +289,7 @@ class Unit(object):
         atk_pow = attacker.template.weapons[attack_weapon_index].attack
         if charging:
             atk_pow += attacker.template.weapons[attack_weapon_index].charge
-        atk_pow *= 1 - Unit.stamina_attack_reduction_ratio(attacker)
+        atk_pow *= 1 - (Unit.stamina_attack_reduction_ratio(attacker) + Unit.morale_attack_reduction_ratio(attacker))
         return atk_pow
     
     @staticmethod
@@ -350,6 +351,10 @@ class Unit(object):
     @staticmethod
     def stamina_attack_reduction_ratio(attacker):
         return ((1 - (attacker.stamina / attacker.template.max_stamina)) * Unit.MAX_STAMINA_ATTACK_REDUCTION_RATIO)
+
+    @staticmethod
+    def morale_attack_reduction_ratio(attacker):
+        return ((1 - (attacker.morale / attacker.template.max_morale)) * Unit.MAX_MORALE_ATTACK_REDUCTION_RATIO)
     
     @staticmethod
     def morale_loss_from_combat(unit, friendly_losses, enemy_losses):
